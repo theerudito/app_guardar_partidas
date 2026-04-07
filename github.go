@@ -2,95 +2,217 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
-type UploadBody struct {
-	Message string `json:"message"`
-	Content string `json:"content"`
-	SHA     string `json:"sha,omitempty"`
-}
-
-type GitFileResponse struct {
-	SHA string `json:"sha"`
-}
-
 func copyToGithub(pathDropbox string, logPath string) error {
+	githubUser := os.Getenv("GITHUB_USER")
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	repoName := os.Getenv("GITHUB_REPO")
 
-	var user = os.Getenv("theerudito")
-	var token = os.Getenv("token")
-	var repo = "saved_games"
+	if githubUser == "" || githubToken == "" || repoName == "" {
+		return fmt.Errorf("faltan variables de entorno GITHUB_USER, GITHUB_TOKEN o GITHUB_REPO")
+	}
 
+	repoPath := filepath.Join(pathDropbox, repoName)
+
+	// Crear repo en GitHub si no existe
+	err := createGithubRepo(githubUser, githubToken, repoName)
+	if err != nil {
+		return fmt.Errorf("error creando repo en GitHub: %w", err)
+	}
+
+	// Si no existe localmente, clonar
+	if _, err := os.Stat(filepath.Join(repoPath, ".git")); os.IsNotExist(err) {
+		remoteURL := fmt.Sprintf("https://%s:%s@github.com/%s/%s.git", githubUser, githubToken, githubUser, repoName)
+
+		err = runGitCommand(pathDropbox, logPath, "clone", remoteURL, repoName)
+		if err != nil {
+			return fmt.Errorf("error al clonar repositorio: %w", err)
+		}
+
+		// limpiar URL del remote
+		cleanURL := fmt.Sprintf("https://github.com/%s/%s.git", githubUser, repoName)
+		_ = runGitCommand(repoPath, logPath, "remote", "set-url", "origin", cleanURL)
+	}
+
+	// Configurar usuario git en el repo local
+	_ = runGitCommand(repoPath, logPath, "config", "user.name", githubUser)
+	_ = runGitCommand(repoPath, logPath, "config", "user.email", fmt.Sprintf("%s@users.noreply.github.com", githubUser))
+
+	// Copiar zips al repo
 	files, err := os.ReadDir(pathDropbox)
 	if err != nil {
-		return fmt.Errorf("no se pudo leer la carpeta de Dropbox: %v", err)
+		return fmt.Errorf("no se pudo leer la carpeta Dropbox: %w", err)
 	}
-
-	client := &http.Client{}
 
 	for _, file := range files {
-		if filepath.Ext(file.Name()) != ".zip" {
+		if file.IsDir() {
+			continue
+		}
+		if strings.ToLower(filepath.Ext(file.Name())) != ".zip" {
 			continue
 		}
 
-		filePath := filepath.Join(pathDropbox, file.Name())
-		content, err := os.ReadFile(filePath)
+		src := filepath.Join(pathDropbox, file.Name())
+		dst := filepath.Join(repoPath, file.Name())
+
+		err := copyFile(src, dst)
 		if err != nil {
-			fmt.Printf("Error al leer %s: %v\n", file.Name(), err)
+			logsManager(logPath, "ERROR", fmt.Sprintf("Error copiando %s al repo: %v", file.Name(), err))
 			continue
-		}
-
-		encoded := base64.StdEncoding.EncodeToString(content)
-		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", user, repo, file.Name())
-
-		var sha string
-		reqCheck, _ := http.NewRequest("GET", url, nil)
-		reqCheck.Header.Set("Authorization", "Bearer "+token)
-		reqCheck.Header.Set("Accept", "application/vnd.github+json")
-
-		respCheck, err := client.Do(reqCheck)
-		if err == nil && respCheck.StatusCode == 200 {
-			defer respCheck.Body.Close()
-			var existing GitFileResponse
-			json.NewDecoder(respCheck.Body).Decode(&existing)
-			sha = existing.SHA
-			fmt.Printf("🔄 Archivo existente detectado: %s (sha=%s)\n", file.Name(), sha)
-		}
-
-		body := UploadBody{
-			Message: fmt.Sprintf("Backup actualizado"),
-			Content: encoded,
-			SHA:     sha,
-		}
-
-		jsonBody, _ := json.Marshal(body)
-		req, _ := http.NewRequest("PUT", url, bytes.NewBuffer(jsonBody))
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			logsManager(logPath, "ERROR", fmt.Sprintf("Error al subir %s: %v", file.Name(), err))
-			continue
-		}
-
-		defer resp.Body.Close()
-
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			fmt.Printf("✅ Subido: %s\n", file.Name())
-			logsManager(logPath, "INFO", fmt.Sprintf("Subido correctamente a GitHub: %s", file.Name()))
-		} else {
-			fmt.Printf("❌ Error al subir %s: %s\n", file.Name(), string(bodyBytes))
-			logsManager(logPath, "ERROR", fmt.Sprintf("Error al subir %s: %s", file.Name(), string(bodyBytes)))
 		}
 	}
 
+	err = runGitCommand(repoPath, logPath, "add", ".")
+	if err != nil {
+		return fmt.Errorf("error en git add: %w", err)
+	}
+
+
+	statusOutput, err := runGitCommandOutput(repoPath, logPath, "status", "--porcelain")
+	if err != nil {
+		return fmt.Errorf("error en git status: %w", err)
+	}
+
+	if strings.TrimSpace(statusOutput) == "" {
+		fmt.Println("ℹ️ No hay cambios para subir a GitHub.")
+		logsManager(logPath, "INFO", "No hay cambios para subir a GitHub")
+		return nil
+	}
+
+	err = runGitCommand(repoPath, logPath, "commit", "-m", "Backup actualizado")
+	if err != nil {
+		return fmt.Errorf("error en git commit: %w", err)
+	}
+
+
+	remoteURL := fmt.Sprintf("https://%s:%s@github.com/%s/%s.git", githubUser, githubToken, githubUser, repoName)
+	err = runGitCommand(repoPath, logPath, "remote", "set-url", "origin", remoteURL)
+	if err != nil {
+		return fmt.Errorf("error configurando remote: %w", err)
+	}
+
+	branch, err := getCurrentBranch(repoPath, logPath)
+	if err != nil || strings.TrimSpace(branch) == "" {
+		branch = "main"
+	}
+
+	err = runGitCommand(repoPath, logPath, "push", "-u", "origin", strings.TrimSpace(branch))
+	if err != nil {
+		return fmt.Errorf("error en git push: %w", err)
+	}
+
+
+	cleanURL := fmt.Sprintf("https://github.com/%s/%s.git", githubUser, repoName)
+	_ = runGitCommand(repoPath, logPath, "remote", "set-url", "origin", cleanURL)
+
+	logsManager(logPath, "INFO", "Archivos subidos correctamente a GitHub con git push")
 	return nil
+}
+
+func createGithubRepo(_, token, repo string) error {
+	url := "https://api.github.com/user/repos"
+
+	body := map[string]interface{}{
+		"name":    repo,
+		"private": false,
+	}
+
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 201 {
+		fmt.Println("✅ Repo creado en GitHub")
+		return nil
+	}
+
+	if resp.StatusCode == 422 {
+		fmt.Println("ℹ️ Repo ya existe en GitHub")
+		return nil
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("github api (%d): %s", resp.StatusCode, string(bodyBytes))
+}
+
+func runGitCommand(workDir, logPath string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = workDir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logsManager(logPath, "ERROR", fmt.Sprintf("git %s -> %s", strings.Join(args, " "), string(output)))
+		return fmt.Errorf("%s", string(output))
+	}
+
+	logsManager(logPath, "INFO", fmt.Sprintf("git %s", strings.Join(args, " ")))
+	return nil
+}
+
+func runGitCommandOutput(workDir, logPath string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = workDir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logsManager(logPath, "ERROR", fmt.Sprintf("git %s -> %s", strings.Join(args, " "), string(output)))
+		return "", fmt.Errorf("%s", string(output))
+	}
+
+	return string(output), nil
+}
+
+func getCurrentBranch(workDir, logPath string) (string, error) {
+	output, err := runGitCommandOutput(workDir, logPath, "branch", "--show-current")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
+}
+
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return err
+	}
+
+	return destFile.Sync()
 }

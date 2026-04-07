@@ -8,8 +8,7 @@ import (
 	"path/filepath"
 )
 
-func copyToDropbox(userPath, dropboxPath, logPath string, gamesPath []string, excludeFolder map[string]bool) error {
-
+func copyToDropbox(dropboxPath, logPath string, gamesPath []GameBackup, excludeFolder map[string]bool) error {
 	if _, err := os.Stat(dropboxPath); os.IsNotExist(err) {
 		err = os.MkdirAll(dropboxPath, os.ModePerm)
 		if err != nil {
@@ -18,16 +17,49 @@ func copyToDropbox(userPath, dropboxPath, logPath string, gamesPath []string, ex
 	}
 
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-
 	if err != nil {
 		return fmt.Errorf("no se pudo crear el archivo de log: %w", err)
 	}
 	defer logFile.Close()
 
-	for _, baseDir := range gamesPath {
+	for _, game := range gamesPath {
+		baseDir := game.Path
+
 		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 			fmt.Printf("Directorio no encontrado: %s\n", baseDir)
 			logsManager(logPath, "WARN", fmt.Sprintf("Directorio no encontrado: %s", baseDir))
+			continue
+		}
+
+		if game.CustomName == "Assassins Creed Shadows" {
+			entries, err := os.ReadDir(baseDir)
+			if err != nil {
+				fmt.Printf("Error al leer %s: %v\n", baseDir, err)
+				logsManager(logPath, "ERROR", fmt.Sprintf("Error al leer %s: %v", baseDir, err))
+				continue
+			}
+
+			foundSubfolder := false
+			for _, entry := range entries {
+				if entry.IsDir() {
+					subDir := filepath.Join(baseDir, entry.Name())
+
+					err = zipGameFolder(subDir, dropboxPath, logPath, excludeFolder, game.CustomName)
+					if err != nil {
+						fmt.Printf("Error al comprimir %s: %v\n", subDir, err)
+						logsManager(logPath, "ERROR", fmt.Sprintf("Error al comprimir %s: %v", subDir, err))
+					}
+
+					foundSubfolder = true
+					break
+				}
+			}
+
+			if !foundSubfolder {
+				fmt.Printf("No se encontró subcarpeta dentro de %s\n", baseDir)
+				logsManager(logPath, "WARN", fmt.Sprintf("No se encontró subcarpeta dentro de %s", baseDir))
+			}
+
 			continue
 		}
 
@@ -43,7 +75,8 @@ func copyToDropbox(userPath, dropboxPath, logPath string, gamesPath []string, ex
 			if entry.IsDir() {
 				hasSubfolders = true
 				subDir := filepath.Join(baseDir, entry.Name())
-				err = zipGameFolder(subDir, dropboxPath, logPath, logFile, excludeFolder)
+
+				err = zipGameFolder(subDir, dropboxPath, logPath, excludeFolder, "")
 				if err != nil {
 					fmt.Printf("Error al comprimir %s: %v\n", subDir, err)
 					logsManager(logPath, "ERROR", fmt.Sprintf("Error al comprimir %s: %v", subDir, err))
@@ -52,7 +85,7 @@ func copyToDropbox(userPath, dropboxPath, logPath string, gamesPath []string, ex
 		}
 
 		if !hasSubfolders {
-			err = zipGameFolder(baseDir, dropboxPath, logPath, logFile, excludeFolder)
+			err = zipGameFolder(baseDir, dropboxPath, logPath, excludeFolder, game.CustomName)
 			if err != nil {
 				fmt.Printf("Error al comprimir %s: %v\n", baseDir, err)
 				logsManager(logPath, "ERROR", fmt.Sprintf("Error al comprimir %s: %v", baseDir, err))
@@ -63,9 +96,12 @@ func copyToDropbox(userPath, dropboxPath, logPath string, gamesPath []string, ex
 	return nil
 }
 
-func zipGameFolder(folderPath, dropboxPath, logPath string, logFile *os.File, excludeFolder map[string]bool) error {
+func zipGameFolder(folderPath, dropboxPath, logPath string, excludeFolder map[string]bool, customName string) error {
+	gameName := customName
+	if gameName == "" {
+		gameName = filepath.Base(folderPath)
+	}
 
-	gameName := filepath.Base(folderPath)
 	zipName := fmt.Sprintf("%s.zip", gameName)
 	zipPath := filepath.Join(dropboxPath, zipName)
 
@@ -73,25 +109,22 @@ func zipGameFolder(folderPath, dropboxPath, logPath string, logFile *os.File, ex
 	if err != nil {
 		return err
 	}
-
-	defer func(zipFile *os.File) {
-		err := zipFile.Close()
-		if err != nil {
+	defer func() {
+		if err := zipFile.Close(); err != nil {
 			fmt.Printf("Error al cerrar %s: %v\n", zipPath, err)
 			logsManager(logPath, "ERROR", fmt.Sprintf("Error al cerrar %s: %v", zipPath, err))
 		}
-	}(zipFile)
+	}()
 
 	zipWriter := zip.NewWriter(zipFile)
-	defer func(zipWriter *zip.Writer) {
-		err := zipWriter.Close()
-		if err != nil {
+	defer func() {
+		if err := zipWriter.Close(); err != nil {
 			fmt.Printf("Error al cerrar zip %s: %v\n", zipPath, err)
 			logsManager(logPath, "ERROR", fmt.Sprintf("Error al cerrar zip %s: %v", zipPath, err))
 		}
-	}(zipWriter)
+	}()
 
-	filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -122,6 +155,9 @@ func zipGameFolder(folderPath, dropboxPath, logPath string, logFile *os.File, ex
 		_, err = io.Copy(writer, file)
 		return err
 	})
+	if err != nil {
+		return err
+	}
 
 	logsManager(logPath, "INFO", fmt.Sprintf("Backup creado: %s", zipName))
 	return nil
