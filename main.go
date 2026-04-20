@@ -41,7 +41,15 @@ func main() {
 		},
 		{
 			Path:       `C:\Games\Assassins Creed Shadows\saves`,
-			CustomName: "Assassins Creed Shadows",
+			CustomName: "Assassin's Creed Shadows",
+		},
+		{
+			Path:       `C:\Users\Usuario\Documents\Criterion Games\Need For Speed(TM) Most Wanted`,
+			CustomName: "Need For Speed(TM) Most Wanted",
+		},
+		{
+			Path:       `C:\Users\Usuario\Documents\NFS Most Wanted`,
+			CustomName: "NFS Most Wanted",
 		},
 	}
 

@@ -1,4 +1,4 @@
 .env
-guardar-partidas.exe
+*.exe
 .idea
 output

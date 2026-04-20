@@ -31,11 +31,13 @@ func copyToDropbox(dropboxPath, logPath string, gamesPath []GameBackup, excludeF
 			continue
 		}
 
-		if game.CustomName == "Assassins Creed Shadows" {
+		switch game.CustomName {
+		case "Assassin's Creed Shadows", "Need For Speed(TM) Most Wanted", "NFS Most Wanted":
 			entries, err := os.ReadDir(baseDir)
 			if err != nil {
-				fmt.Printf("Error al leer %s: %v\n", baseDir, err)
-				logsManager(logPath, "ERROR", fmt.Sprintf("Error al leer %s: %v", baseDir, err))
+				msg := fmt.Sprintf("Error al leer %s: %v", baseDir, err)
+				fmt.Println(msg)
+				logsManager(logPath, "ERROR", msg)
 				continue
 			}
 
@@ -43,23 +45,22 @@ func copyToDropbox(dropboxPath, logPath string, gamesPath []GameBackup, excludeF
 			for _, entry := range entries {
 				if entry.IsDir() {
 					subDir := filepath.Join(baseDir, entry.Name())
-
 					err = zipGameFolder(subDir, dropboxPath, logPath, excludeFolder, game.CustomName)
 					if err != nil {
-						fmt.Printf("Error al comprimir %s: %v\n", subDir, err)
-						logsManager(logPath, "ERROR", fmt.Sprintf("Error al comprimir %s: %v", subDir, err))
+						msg := fmt.Sprintf("Error al comprimir %s: %v", subDir, err)
+						fmt.Println(msg)
+						logsManager(logPath, "ERROR", msg)
 					}
-
 					foundSubfolder = true
 					break
 				}
 			}
 
 			if !foundSubfolder {
-				fmt.Printf("No se encontró subcarpeta dentro de %s\n", baseDir)
-				logsManager(logPath, "WARN", fmt.Sprintf("No se encontró subcarpeta dentro de %s", baseDir))
+				msg := fmt.Sprintf("No se encontró subcarpeta dentro de %s", baseDir)
+				fmt.Println(msg)
+				logsManager(logPath, "WARN", msg)
 			}
-
 			continue
 		}
 
