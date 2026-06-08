@@ -16,6 +16,8 @@ func logsManager(path string, logType string, message string) {
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	entry := fmt.Sprintf("[%s] [%s] %s\n", timestamp, logType, message)
-	f.WriteString(entry)
+
+	_, _ = f.WriteString(entry)
+
 	fmt.Printf("📝 [%s] %s\n", logType, message)
 }
