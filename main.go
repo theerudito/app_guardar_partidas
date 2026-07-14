@@ -44,6 +44,10 @@ func main() {
 			CustomName: "Assassin's Creed Shadows",
 		},
 		{
+			Path:       `C:\Games\Assassins Creed Black Flag Resynced\saves`,
+			CustomName: "Assassins Creed Black Flag Resynced",
+		},
+		{
 			Path:       `C:\Users\Usuario\Documents\Criterion Games\Need For Speed(TM) Most Wanted`,
 			CustomName: "Need For Speed(TM) Most Wanted",
 		},

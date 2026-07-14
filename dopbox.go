@@ -32,7 +32,7 @@ func copyToDropbox(dropboxPath, logPath string, gamesPath []GameBackup, excludeF
 		}
 
 		switch game.CustomName {
-		case "Assassin's Creed Shadows", "Need For Speed(TM) Most Wanted", "NFS Most Wanted":
+		case "Assassin's Creed Shadows", "Need For Speed(TM) Most Wanted", "NFS Most Wanted", "Assassins Creed Black Flag Resynced":
 			entries, err := os.ReadDir(baseDir)
 			if err != nil {
 				msg := fmt.Sprintf("Error al leer %s: %v", baseDir, err)
