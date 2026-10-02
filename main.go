@@ -28,32 +28,40 @@ func main() {
 
 	folderGames := []GameBackup{
 		{
-			Path:       filepath.Join(userDirectory, "Saved Games"),
-			CustomName: "",
+			Path:       `C:\Users\Usuario\Saved Games\God of War\1638`,
+			CustomName: "God of War 2018",
 		},
 		{
-			Path:       filepath.Join(userDirectory, "Downloads", "God Of War", "PS3", "dev_hdd0", "home"),
-			CustomName: "",
+			Path:       `C:\Users\Usuario\Saved Games\God of War Ragnarök\6144`,
+			CustomName: "God of War Ragnarök",
 		},
 		{
-			Path:       filepath.Join(userDirectory, "AppData", "LocalLow", "Team Cherry"),
-			CustomName: "",
+			Path:       `C:\Users\Usuario\Downloads\God Of War\PS3\dev_hdd0\home\00000001`,
+			CustomName: "God Of War III",
+		},
+		{
+			Path:       `C:\Users\Usuario\AppData\LocalLow\Team Cherry\Hollow Knight`,
+			CustomName: "Hollow Knight",
+		},
+		{
+			Path:       `C:\Users\Usuario\AppData\LocalLow\Team Cherry\Hollow Knight Silksong`,
+			CustomName: "Hollow Knight Silksong",
 		},
 		{
 			Path:       `C:\Games\Assassins Creed Shadows\saves`,
 			CustomName: "Assassin's Creed Shadows",
 		},
 		{
-			Path:       `C:\Games\Assassins Creed Black Flag Resynced\saves`,
+			Path:       `C:\Users\Usuario\AppData\Roaming\Goldberg UplayEmu Saves\66088`,
 			CustomName: "Assassins Creed Black Flag Resynced",
 		},
 		{
 			Path:       `C:\Users\Usuario\Documents\Criterion Games\Need For Speed(TM) Most Wanted`,
-			CustomName: "Need For Speed(TM) Most Wanted",
+			CustomName: "NFS Most Wanted 2012",
 		},
 		{
 			Path:       `C:\Users\Usuario\Documents\NFS Most Wanted`,
-			CustomName: "NFS Most Wanted",
+			CustomName: "NFS Most Wanted 2005",
 		},
 	}
 
