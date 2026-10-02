@@ -39,3 +39,4 @@ Filename: "{app}\guardar-partidas.exe"; Description: "Ejecutar Guardar Partidas"
 
 [UninstallDelete]
 Type: files; Name: "{app}\.env"
+Type: files; Name: "{app}\data.json"
